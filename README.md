@@ -9,13 +9,15 @@
 Run the following commands to quickly set up and launch DD-CLI:  
 
 ```bash
-cd /tmp
 git clone https://github.com/GlitchLinux/dd_py_CLI.git
 cd dd_py_CLI
 python3 DD-CLI.py
 ```
+## Dependecies - Debian  
 
-*(Requires Python 3 and `git` installed on your system.)*  
+```bash
+sudo apt update && sudo apt install -y python3 python3-pip git pv dosfstools parted cryptsetup lsblk
+```
 
 ---
 
