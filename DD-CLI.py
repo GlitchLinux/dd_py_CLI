@@ -51,14 +51,13 @@ class DDUtilityCLI:
     def list_disks(self):
         disks = self.get_disk_info()
         if not disks:
-            print("No disks found!")
+            print("\033[38;5;201mNo disks found!\033[0m")
             return
         
-        print("\nAvailable disks:")
-        print(f"{'#':<3} {'Device':<15} {'Size':<10} {'Model'}")
-        print("-" * 50)
+        print("\n\033[38;5;201mAvailable disks:\033[0m")
+        print(" ")
         for i, path, size, model in disks:
-            print(f"{i:<3} {path:<15} {size:<10} {model}")
+            print("\033[38;5;201m{:<3}\033[0m \033[38;5;82m{:<15} {:<10} {}\033[0m".format(i, path, size, model))
 
     def select_disk(self, prompt):
         disks = self.get_disk_info()
@@ -68,7 +67,7 @@ class DDUtilityCLI:
         while True:
             self.list_disks()
             try:
-                choice = input(f"\n{prompt} (enter number or 'q' to quit): ").strip()
+                choice = input(f"\n\033[38;5;201m{prompt} (enter number or 'q' to quit): \033[0m").strip()
                 if choice.lower() == 'q':
                     return None
                 
@@ -76,21 +75,24 @@ class DDUtilityCLI:
                 if 0 <= choice < len(disks):
                     return disks[choice][1]
                 else:
-                    print("Invalid selection. Please try again.")
+                    print("\033[38;5;201mInvalid selection. Please try again.\033[0m")
             except ValueError:
-                print("Please enter a valid number.")
+                print("\033[38;5;201mPlease enter a valid number.\033[0m")
 
     def confirm_operation(self, message):
         parts = message.split('\n')
         formatted_message = []
         for part in parts:
-            if "WARNING:" in part:
+            if part.startswith("You are about to") or part.startswith("to:"):
+                formatted_message.append(f"\033[38;5;201m{part}\033[0m")
+            elif "WARNING:" in part:
                 formatted_message.append(f"\033[38;5;201m{part}\033[0m")
             else:
-                formatted_message.append(part)
+                formatted_message.append(f"\033[38;5;82m{part}\033[0m")
         
         print("\n" + "\n".join(formatted_message) + "\n")
-        response = input("Are you sure you want to continue? (y/N): ").strip().lower()
+        response = input("\033[38;5;82mAre you sure you want to continue? (y/N): \033[0m").strip().lower()
+        print()
         return response == 'y'
 
     def update_progress(self, line):
@@ -100,7 +102,7 @@ class DDUtilityCLI:
             copied_mb = copied_bytes / (1024 * 1024)
             if self.total_size > 0:
                 progress_percentage = min((copied_bytes / self.total_size) * 100, 100)
-                print(f"\r\033[38;5;82mCopied: {int(copied_mb):04d} MB, {progress_percentage:.0f}% Completed\033[0m", end='')
+                print(f"\r\033[38;5;201mCopied: \033[38;5;82m{int(copied_mb):04d} MB \033[38;5;201m{progress_percentage:.0f}% \033[38;5;82mCompleted\033[0m", end='')
 
     def execute_dd(self, src, dest):
         try:
@@ -122,28 +124,28 @@ class DDUtilityCLI:
             
             self.process.wait()
             if self.cancelled:
-                print("\nOperation cancelled")
+                print("\n\033[38;5;201mOperation cancelled\033[0m")
                 return False
             elif self.process.returncode == 0:
-                print("\nOperation completed successfully")
+                print("\n\033[38;5;82mOperation completed successfully\033[0m")
                 return True
             else:
                 raise subprocess.CalledProcessError(self.process.returncode, self.process.args)
                 
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode().strip() if e.stderr else str(e)
-            print(f"\nOperation failed: {error_msg}")
+            print(f"\n\033[38;5;201mOperation failed: {error_msg}\033[0m")
             return False
         finally:
             self.process = None
 
     def file_to_disk(self):
-        print("\nFile to Disk Operation")
-        print("----------------------")
+        print("\n\033[38;5;201mFile to Disk Operation\033[0m")
+        print(" ")
         
-        file_path = input("Enter path to the file to flash: ").strip()
+        file_path = input("\033[38;5;82mEnter path to the file to flash: \033[0m").strip()
         if not os.path.exists(file_path):
-            print("Error: File does not exist!")
+            print("\033[38;5;201mError: File does not exist!\033[0m")
             return
             
         self.selected_file = file_path
@@ -160,12 +162,12 @@ class DDUtilityCLI:
         ):
             return
             
-        print("\nStarting file to disk operation...\n")
+        print("\n\033[38;5;201mStarting file to disk operation...\033[0m\n")
         self.execute_dd(file_path, dest_disk)
 
     def disk_to_disk(self):
-        print("\nDisk to Disk Operation")
-        print("---------------------")
+        print("\n\033[38;5;201mDisk to Disk Operation\033[0m")
+        print(" ")
         
         src_disk = self.select_disk("Select source disk")
         if not src_disk:
@@ -176,7 +178,7 @@ class DDUtilityCLI:
                 ["sudo", "blockdev", "--getsize64", src_disk]
             ).strip())
         except subprocess.CalledProcessError as e:
-            print(f"Error: Failed to get size of source disk: {e}")
+            print(f"\033[38;5;201mError: Failed to get size of source disk: {e}\033[0m")
             return
             
         dest_disk = self.select_disk("Select destination disk")
@@ -190,28 +192,28 @@ class DDUtilityCLI:
         ):
             return
             
-        print("\nStarting disk to disk operation...\n")
+        print("\n\033[38;5;201mStarting disk to disk operation...\033[0m\n")
         self.execute_dd(src_disk, dest_disk)
 
     def create_partition_table(self):
-        print("\nCreate Partition Table")
-        print("----------------------")
+        print("\n\033[38;5;201mCreate Partition Table\033[0m")
+        print(" ")
         
         disk = self.select_disk("Select disk to create partition table on")
         if not disk:
             return
             
-        print("\nPartition table types:")
+        print("\n\033[38;5;201mPartition table types:\033[0m")
         print("\033[38;5;201m1.\033[0m \033[38;5;82mMBR (msdos)\033[0m")
         print("\033[38;5;201m2.\033[0m \033[38;5;82mGPT\033[0m")
-        choice = input("\033[38;5;82mSelect partition table type \033[0m\033[38;5;201m(1-2)\033[0m\033[38;5;82m: \033[0m").strip()
+        choice = input("\n\033[38;5;82mSelect partition table type \033[0m\033[38;5;201m(1-2)\033[0m\033[38;5;82m: \033[0m").strip()
         
         if choice == '1':
             table_type = "msdos"
         elif choice == '2':
             table_type = "gpt"
         else:
-            print("Invalid selection")
+            print("\033[38;5;201mInvalid selection\033[0m")
             return
             
         if not self.confirm_operation(
@@ -220,7 +222,7 @@ class DDUtilityCLI:
         ):
             return
             
-        print(f"\nCreating {table_type} partition table on {disk}...\n")
+        print(f"\n\033[38;5;201mCreating {table_type} partition table on {disk}...\033[0m\n")
         try:
             result = subprocess.run(
                 ["sudo", "parted", "-s", disk, "mklabel", table_type],
@@ -228,20 +230,20 @@ class DDUtilityCLI:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
-            print(f"Successfully created {table_type} partition table on {disk}")
+            print(f"\033[38;5;82mSuccessfully created {table_type} partition table on {disk}\033[0m")
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode().strip() if e.stderr else str(e)
-            print(f"Failed to create partition table: {error_msg}")
+            print(f"\033[38;5;201mFailed to create partition table: {error_msg}\033[0m")
 
     def format_disk(self):
-        print("\nFormat Disk/Partition")
-        print("---------------------")
+        print("\n\033[38;5;201mFormat Disk/Partition\033[0m")
+        print(" ")
         
         disk = self.select_disk("Select disk/partition to format")
         if not disk:
             return
             
-        print("\nAvailable filesystems:")
+        print("\n\033[38;5;201mAvailable filesystems:\033[0m")
         filesystems = [
             ("1", "FAT16", "fat16"), ("2", "FAT32", "fat32"), ("3", "exFAT", "exfat"),
             ("4", "NTFS", "ntfs"), ("5", "BTRFS", "btrfs"), ("6", "EXT2", "ext2"),
@@ -251,7 +253,7 @@ class DDUtilityCLI:
         for num, name, _ in filesystems:
             print(f"\033[38;5;201m{num}.\033[0m \033[38;5;82m{name}\033[0m")
             
-        choice = input("\033[38;5;82mSelect filesystem \033[0m\033[38;5;201m(1-9)\033[0m\033[38;5;82m: \033[0m").strip()
+        choice = input("\n\033[38;5;82mSelect filesystem \033[0m\033[38;5;201m(1-9)\033[0m\033[38;5;82m: \033[0m").strip()
         selected = None
         
         for num, name, fs_type in filesystems:
@@ -260,7 +262,7 @@ class DDUtilityCLI:
                 break
                 
         if not selected:
-            print("Invalid selection")
+            print("\033[38;5;201mInvalid selection\033[0m")
             return
             
         if not self.confirm_operation(
@@ -270,7 +272,7 @@ class DDUtilityCLI:
         ):
             return
             
-        print(f"\nFormatting {disk} as {selected}...\n")
+        print(f"\n\033[38;5;201mFormatting {disk} as {selected}...\033[0m\n")
         try:
             if selected == "luks":
                 process = subprocess.Popen(
@@ -302,24 +304,24 @@ class DDUtilityCLI:
                     stderr=subprocess.PIPE
                 )
 
-            print(f"Successfully formatted {disk} as {selected}")
+            print(f"\033[38;5;82mSuccessfully formatted {disk} as {selected}\033[0m")
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode().strip() if e.stderr else str(e)
-            print(f"Failed to format disk: {error_msg}")
+            print(f"\033[38;5;201mFailed to format disk: {error_msg}\033[0m")
 
     def secure_erase(self):
-        print("\nSecure Erase Disk")
-        print("----------------")
+        print("\n\033[38;5;201mSecure Erase Disk\033[0m")
+        print(" ")
         
         disk = self.select_disk("Select disk to securely erase")
         if not disk:
             return
             
-        print("\nErase methods:")
+        print("\n\033[38;5;201mErase methods:\033[0m")
         print("\033[38;5;201m1.\033[0m \033[38;5;82m/dev/zero (1 pass)\033[0m")
         print("\033[38;5;201m2.\033[0m \033[38;5;82m/dev/random (3 passes)\033[0m")
         print("\033[38;5;201m3.\033[0m \033[38;5;82m/dev/urandom (7 passes)\033[0m")
-        choice = input("\033[38;5;82mSelect erase method \033[0m\033[38;5;201m(1-3)\033[0m\033[38;5;82m: \033[0m").strip()
+        choice = input("\n\033[38;5;82mSelect erase method \033[0m\033[38;5;201m(1-3)\033[0m\033[38;5;82m: \033[0m").strip()
         
         if choice == '1':
             source = "/dev/zero"
@@ -331,7 +333,7 @@ class DDUtilityCLI:
             source = "/dev/urandom"
             passes = 7
         else:
-            print("Invalid selection")
+            print("\033[38;5;201mInvalid selection\033[0m")
             return
             
         if not self.confirm_operation(
@@ -346,16 +348,16 @@ class DDUtilityCLI:
                 ["sudo", "blockdev", "--getsize64", disk]
             ).strip())
         except subprocess.CalledProcessError as e:
-            print(f"Error: Failed to get disk size: {e}")
+            print(f"\033[38;5;201mError: Failed to get disk size: {e}\033[0m")
             return
             
-        print(f"\nErasing {disk} with {passes} passes of {source}...\n")
+        print(f"\n\033[38;5;201mErasing {disk} with {passes} passes of {source}...\033[0m\n")
         try:
             for i in range(passes):
                 if self.cancelled:
                     break
                     
-                print(f"\nPass {i+1} of {passes} with {source}")
+                print(f"\n\033[38;5;201mPass {i+1} of {passes} with {source}\033[0m")
                 
                 process = subprocess.Popen(
                     ["sudo", "dd", f"if={source}", f"of={disk}", "bs=1M", "status=progress"],
@@ -379,24 +381,24 @@ class DDUtilityCLI:
                     if match:
                         copied_bytes = int(match.group(1))
                         progress = (i * 100 + (copied_bytes / self.total_size * 100)) / passes
-                        print(f"\r\033[38;5;82mProgress: {progress:.1f}%\033[0m", end='')
+                        print(f"\r\033[38;5;201mProgress: \033[38;5;82m{progress:.1f}%\033[0m", end='')
                 
                 process.wait()
                 if process.returncode != 0 and not self.cancelled:
                     raise subprocess.CalledProcessError(process.returncode, process.args)
 
             if self.cancelled:
-                print("\nSecure erase cancelled")
+                print("\n\033[38;5;201mSecure erase cancelled\033[0m")
             else:
-                print(f"\nSecure erase completed successfully with {passes} passes")
+                print(f"\n\033[38;5;82mSecure erase completed successfully with {passes} passes\033[0m")
             
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode().strip() if e.stderr else str(e)
-            print(f"\nSecure erase failed: {error_msg}")
+            print(f"\n\033[38;5;201mSecure erase failed: {error_msg}\033[0m")
 
     def create_disk_image(self):
-        print("\nCreate Disk Image")
-        print("----------------")
+        print("\n\033[38;5;201mCreate Disk Image\033[0m")
+        print(" ")
         
         disk = self.select_disk("Select disk to create image from")
         if not disk:
@@ -406,9 +408,9 @@ class DDUtilityCLI:
         disk_size = self.disk_info[disk]['size'].replace(" ", "")
         default_name = f"image-of-{disk_model}-{disk_size}.img"
         
-        dest_dir = input(f"Enter directory to save image (default name: {default_name}): ").strip()
+        dest_dir = input(f"\033[38;5;82mEnter directory to save image (default name: {default_name}): \033[0m").strip()
         if not dest_dir:
-            print("No directory specified")
+            print("\033[38;5;201mNo directory specified\033[0m")
             return
             
         self.image_path = os.path.join(dest_dir, default_name)
@@ -427,10 +429,10 @@ class DDUtilityCLI:
                 ["sudo", "blockdev", "--getsize64", disk]
             ).strip())
         except subprocess.CalledProcessError as e:
-            print(f"Error: Failed to get disk size: {e}")
+            print(f"\033[38;5;201mError: Failed to get disk size: {e}\033[0m")
             return
             
-        print(f"\nCreating disk image from {disk} to {self.image_path}...\n")
+        print(f"\n\033[38;5;201mCreating disk image from {disk} to {self.image_path}...\033[0m\n")
         try:
             process = subprocess.Popen(
                 ["sudo", "dd", f"if={disk}", f"of={self.image_path}", "bs=4M", "status=progress"],
@@ -457,13 +459,13 @@ class DDUtilityCLI:
                 if match:
                     copied_bytes = int(match.group(1))
                     progress_percentage = min((copied_bytes / self.total_size) * 100, 100)
-                    print(f"\r\033[38;5;82mProgress: {progress_percentage:.1f}%\033[0m", end='')
+                    print(f"\r\033[38;5;201mProgress: \033[38;5;82m{progress_percentage:.1f}%\033[0m", end='')
             
             process.wait()
             if self.cancelled:
-                print("\nDisk imaging cancelled")
+                print("\n\033[38;5;201mDisk imaging cancelled\033[0m")
             elif process.returncode == 0:
-                print(f"\nDisk image created successfully at:\n{self.image_path}")
+                print(f"\n\033[38;5;82mDisk image created successfully at:\n{self.image_path}\033[0m")
             else:
                 raise subprocess.CalledProcessError(process.returncode, process.args)
             
@@ -472,7 +474,7 @@ class DDUtilityCLI:
             # Remove failed image file if it exists
             if os.path.exists(self.image_path):
                 os.remove(self.image_path)
-            print(f"\nDisk imaging failed: {error_msg}")
+            print(f"\n\033[38;5;201mDisk imaging failed: {error_msg}\033[0m")
 
     def cancel_operation(self):
         if self.process:
@@ -495,7 +497,7 @@ def main():
         sys.exit(0)
     
     while True:
-        print("\n\033[38;5;201mDD Utility - CLI\033[0m")
+        print("\n\033[38;5;201mDD Utility - CLI \033[0m")
         print(" ")
         print("\033[38;5;201m1.\033[0m \033[38;5;82mFile to Disk\033[0m")
         print("\033[38;5;201m2.\033[0m \033[38;5;82mDisk to Disk\033[0m")
@@ -524,15 +526,15 @@ def main():
             elif choice == '7':
                 utility.list_disks()
             elif choice == '8':
-                print("Exiting...")
+                print("\033[38;5;201mExiting...\033[0m")
                 break
             else:
-                print("Invalid choice. Please try again.")
+                print("\033[38;5;201mInvalid choice. Please try again.\033[0m")
         except KeyboardInterrupt:
-            print("\nOperation cancelled by user")
+            print("\n\033[38;5;201mOperation cancelled by user\033[0m")
             utility.cancel_operation()
         except Exception as e:
-            print(f"\nError: {e}")
+            print(f"\n\033[38;5;201mError: {e}\033[0m")
 
 if __name__ == "__main__":
     main()
