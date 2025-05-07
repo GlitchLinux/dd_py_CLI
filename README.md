@@ -13,12 +13,34 @@ git clone https://github.com/GlitchLinux/dd_py_CLI.git
 cd dd_py_CLI
 python3 DD-CLI.py
 ```
-## Dependecies - Debian  
+
+## Dependecies 
+
+## Debian & Ubuntu
 
 ```bash
-sudo apt update && sudo apt install -y python3 python3-pip git pv dosfstools parted cryptsetup lsblk
+sudo apt install -y python3 python3-pip git pv dosfstools parted cryptsetup lsblk
 ```
+## Arch 
 
+```bash
+sudo pacman -S python python-pip git pv dosfstools parted cryptsetup lsblk
+```
+## Fedora
+
+```bash
+sudo dnf install -y python3 python3-pip git pv dosfstools parted cryptsetup lsblk
+```
+## openSUSE
+
+```bash
+sudo zypper install -y python3 python3-pip git pv dosfstools parted cryptsetup lsblk
+```
+## Alpine
+
+```bash
+sudo apk add python3 py3-pip git pv dosfstools parted cryptsetup lsblk
+```
 ---
 
 ## 🚀 Features  
