@@ -209,7 +209,6 @@ class DDUtilityCLI:
         
         print("\n" + "\n".join(formatted_message) + "\n")
         response = input("\033[38;5;82mAre you sure you want to continue? (y/N): \033[0m").strip().lower()
-        print()
         return response == 'y'
 
     def update_progress(self, line):
