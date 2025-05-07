@@ -77,6 +77,52 @@ class DDUtilityCLI:
                 except subprocess.CalledProcessError:
                     pass
 
+    def list_disks_and_partitions_numbered(self):
+        """List disks and partitions with sequential numbering for selection"""
+        try:
+            output = subprocess.check_output(
+                ["lsblk", "-o", "NAME,SIZE,FSTYPE,MOUNTPOINT,MODEL", "-p", "-l"]
+            ).decode().strip().split("\n")
+            
+            devices = []
+            current_disk = None
+            
+            for line in output[1:]:  # Skip header
+                parts = line.split()
+                if not parts:
+                    continue
+                    
+                device = parts[0]
+                size = parts[1]
+                fstype = parts[2] if len(parts) > 2 else ""
+                model = parts[-1] if len(parts) > 4 else ""
+                
+                if device.startswith('/dev/sd') or device.startswith('/dev/mmcblk') or device.startswith('/dev/loop'):
+                    if not device[-1].isdigit():  # It's a disk, not partition
+                        current_disk = device
+                        devices.append((device, size, fstype, model, True))  # is_disk=True
+                    else:  # It's a partition
+                        devices.append((device, size, fstype, model, False))  # is_disk=False
+            
+            # Now print with sequential numbering
+            print("\n\033[38;5;201mAvailable disks and partitions:\033[0m")
+            print(" ")
+            for i, (device, size, fstype, model, is_disk) in enumerate(devices, 1):
+                if is_disk:
+                    print("\033[38;5;201m{:<3}\033[0m \033[38;5;82m{:<15} {:<10} {}\033[0m".format(
+                        i, device, size, model
+                    ))
+                else:
+                    print("\033[38;5;201m{:<3}\033[0m \033[38;5;82m{:<15} {:<10} {}\033[0m".format(
+                        i, device, size, fstype
+                    ))
+            
+            return devices
+            
+        except subprocess.CalledProcessError as e:
+            print(f"\033[38;5;201mError listing disks: {e}\033[0m")
+            return []
+
     def select_disk(self, prompt, include_partitions=False):
         disks = self.get_disk_info()
         if not disks:
@@ -96,6 +142,59 @@ class DDUtilityCLI:
                     print("\033[38;5;201mInvalid selection. Please try again.\033[0m")
             except ValueError:
                 print("\033[38;5;201mPlease enter a valid number.\033[0m")
+
+    def select_disk_or_partition(self, prompt):
+        """Select disk or partition with sequential numbering"""
+        devices = self.list_disks_and_partitions_numbered()
+        if not devices:
+            return None
+            
+        while True:
+            try:
+                choice = input(f"\n\033[38;5;201m{prompt} (enter number or 'q' to quit): \033[0m").strip()
+                if choice.lower() == 'q':
+                    return None
+                
+                choice = int(choice)
+                if 1 <= choice <= len(devices):
+                    return devices[choice-1][0]  # Return device path
+                else:
+                    print("\033[38;5;201mInvalid selection. Please try again.\033[0m")
+            except ValueError:
+                print("\033[38;5;201mPlease enter a valid number.\033[0m")
+
+    def get_free_space(self, disk):
+        """Get free space information for a disk"""
+        try:
+            # Use parted to get free space information
+            output = subprocess.check_output(
+                ["sudo", "parted", "-s", disk, "unit", "MB", "print", "free"]
+            ).decode().strip().split("\n")
+            
+            free_spaces = []
+            
+            for line in output:
+                if "Free Space" in line:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        start = parts[0].replace("MB", "")
+                        end = parts[1].replace("MB", "")
+                        size = parts[2].replace("MB", "")
+                        free_spaces.append({
+                            'start': start,
+                            'end': end,
+                            'size': size
+                        })
+            
+            return free_spaces
+            
+        except subprocess.CalledProcessError as e:
+            print(f"\033[38;5;201mError getting free space: {e}\033[0m")
+            return []
+
+    def clean_partition_name(self, partition_name):
+        """Remove special characters from partition names"""
+        return partition_name.replace('└─', '').replace('├─', '').strip()
 
     def confirm_operation(self, message):
         parts = message.split('\n')
@@ -212,190 +311,6 @@ class DDUtilityCLI:
             
         print("\n\033[38;5;201mStarting disk to disk operation...\033[0m\n")
         self.execute_dd(src_disk, dest_disk)
-
-    def create_partition_table(self):
-        print("\n\033[38;5;201mCreate Partition Table\033[0m")
-        print(" ")
-        
-        disk = self.select_disk("Select disk to create partition table on")
-        if not disk:
-            return
-            
-        print("\n\033[38;5;201mPartition table types:\033[0m")
-        print("\033[38;5;201m1.\033[0m \033[38;5;82mMBR (msdos)\033[0m")
-        print("\033[38;5;201m2.\033[0m \033[38;5;82mGPT\033[0m")
-        choice = input("\n\033[38;5;82mSelect partition table type \033[0m\033[38;5;201m(1-2)\033[0m\033[38;5;82m: \033[0m").strip()
-        
-        if choice == '1':
-            table_type = "msdos"
-        elif choice == '2':
-            table_type = "gpt"
-        else:
-            print("\033[38;5;201mInvalid selection\033[0m")
-            return
-            
-        if not self.confirm_operation(
-            f"You are about to create a {table_type} partition table on:\n{disk}\n"
-            f"WARNING: This will destroy all data on this disk!"
-        ):
-            return
-            
-        print(f"\n\033[38;5;201mCreating {table_type} partition table on {disk}...\033[0m\n")
-        try:
-            result = subprocess.run(
-                ["sudo", "parted", "-s", disk, "mklabel", table_type],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            print(f"\033[38;5;82mSuccessfully created {table_type} partition table on {disk}\033[0m")
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr.decode().strip() if e.stderr else str(e)
-            print(f"\033[38;5;201mFailed to create partition table: {error_msg}\033[0m")
-
-    def format_disk(self):
-        print("\n\033[38;5;201mFormat Disk/Partition\033[0m")
-        print(" ")
-        
-        disk = self.select_disk("Select disk/partition to format", include_partitions=True)
-        if not disk:
-            return
-            
-        print("\n\033[38;5;201mAvailable filesystems:\033[0m")
-        filesystems = [
-            ("1", "FAT16", "fat16"), ("2", "FAT32", "fat32"), ("3", "exFAT", "exfat"),
-            ("4", "NTFS", "ntfs"), ("5", "BTRFS", "btrfs"), ("6", "EXT2", "ext2"),
-            ("7", "EXT3", "ext3"), ("8", "EXT4", "ext4"), ("9", "LUKS", "luks")
-        ]
-        
-        for num, name, _ in filesystems:
-            print(f"\033[38;5;201m{num}.\033[0m \033[38;5;82m{name}\033[0m")
-            
-        choice = input("\n\033[38;5;82mSelect filesystem \033[0m\033[38;5;201m(1-9)\033[0m\033[38;5;82m: \033[0m").strip()
-        selected = None
-        
-        for num, name, fs_type in filesystems:
-            if choice == num:
-                selected = fs_type
-                break
-                
-        if not selected:
-            print("\033[38;5;201mInvalid selection\033[0m")
-            return
-            
-        if not self.confirm_operation(
-            f"You are about to format:\n{disk}\n"
-            f"as {selected.upper()}\n"
-            f"WARNING: This will destroy all data on this disk/partition!"
-        ):
-            return
-            
-        print(f"\n\033[38;5;201mFormatting {disk} as {selected}...\033[0m\n")
-        try:
-            if selected == "luks":
-                # Prompt for passphrase
-                passphrase = input("\033[38;5;82mEnter passphrase for LUKS encryption: \033[0m").strip()
-                if not passphrase:
-                    print("\033[38;5;201mPassphrase cannot be empty!\033[0m")
-                    return
-                
-                # Create LUKS container
-                process = subprocess.Popen(
-                    ["sudo", "cryptsetup", "luksFormat", "--batch-mode", disk],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                process.communicate(input=passphrase + "\n" + passphrase + "\n")
-                
-                if process.returncode != 0:
-                    raise subprocess.CalledProcessError(process.returncode, process.args)
-                
-                print("\033[38;5;82mLUKS container created successfully\033[0m")
-                
-                # Open the LUKS container
-                mapper_name = os.path.basename(disk) + "_crypt"
-                process = subprocess.Popen(
-                    ["sudo", "cryptsetup", "open", disk, mapper_name],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                process.communicate(input=passphrase + "\n")
-                
-                if process.returncode != 0:
-                    raise subprocess.CalledProcessError(process.returncode, process.args)
-                
-                print("\033[38;5;82mLUKS container opened at /dev/mapper/{}\033[0m".format(mapper_name))
-                
-                # Prompt for filesystem for the data partition
-                print("\n\033[38;5;201mAvailable filesystems for the data partition:\033[0m")
-                data_filesystems = [
-                    ("1", "EXT4", "ext4"), ("2", "BTRFS", "btrfs"), ("3", "XFS", "xfs")
-                ]
-                
-                for num, name, _ in data_filesystems:
-                    print(f"\033[38;5;201m{num}.\033[0m \033[38;5;82m{name}\033[0m")
-                    
-                choice = input("\n\033[38;5;82mSelect filesystem for data partition \033[0m\033[38;5;201m(1-3)\033[0m\033[38;5;82m: \033[0m").strip()
-                selected_fs = None
-                
-                for num, name, fs_type in data_filesystems:
-                    if choice == num:
-                        selected_fs = fs_type
-                        break
-                        
-                if not selected_fs:
-                    print("\033[38;5;201mInvalid selection\033[0m")
-                    return
-                
-                # Format the data partition
-                mapper_path = f"/dev/mapper/{mapper_name}"
-                if selected_fs == "ext4":
-                    cmd = ["sudo", "mkfs.ext4", mapper_path]
-                elif selected_fs == "btrfs":
-                    cmd = ["sudo", "mkfs.btrfs", "-f", mapper_path]
-                elif selected_fs == "xfs":
-                    cmd = ["sudo", "mkfs.xfs", "-f", mapper_path]
-                
-                result = subprocess.run(
-                    cmd,
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                
-                print(f"\033[38;5;82mSuccessfully formatted {mapper_path} as {selected_fs}\033[0m")
-                
-                # Close the LUKS container
-                subprocess.run(["sudo", "cryptsetup", "close", mapper_name], check=True)
-                print("\033[38;5;82mLUKS container closed\033[0m")
-                
-            else:
-                if selected.startswith("fat"):
-                    cmd = ["sudo", "mkfs.vfat", "-F", selected[3:], disk]
-                elif selected == "exfat":
-                    cmd = ["sudo", "mkfs.exfat", disk]
-                elif selected == "ntfs":
-                    cmd = ["sudo", "mkfs.ntfs", "-Q", disk]
-                elif selected.startswith("ext"):
-                    cmd = ["sudo", f"mkfs.{selected}", disk]
-                elif selected == "btrfs":
-                    cmd = ["sudo", "mkfs.btrfs", "-f", disk]
-                
-                result = subprocess.run(
-                    cmd,
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-
-                print(f"\033[38;5;82mSuccessfully formatted {disk} as {selected}\033[0m")
-        except subprocess.CalledProcessError as e:
-            error_msg = e.stderr.decode().strip() if e.stderr else str(e)
-            print(f"\033[38;5;201mFailed to format disk: {error_msg}\033[0m")
 
     def secure_erase(self):
         print("\n\033[38;5;201mSecure Erase Disk\033[0m")
@@ -639,6 +554,338 @@ class DDUtilityCLI:
                 os.remove(image_path)
             print(f"\n\033[38;5;201mFailed to create virtual disk: {error_msg}\033[0m")
 
+    def partition_management(self):
+        print("\n\033[38;5;201mPartition Management\033[0m")
+        print(" ")
+        
+        print("\033[38;5;201m1.\033[0m \033[38;5;82mCreate new partition table and partition\033[0m")
+        print("\033[38;5;201m2.\033[0m \033[38;5;82mCreate new partition on existing disk\033[0m")
+        print("\033[38;5;201m3.\033[0m \033[38;5;82mFormat disk/partition\033[0m")
+        choice = input("\n\033[38;5;82mSelect operation \033[0m\033[38;5;201m(1-3)\033[0m\033[38;5;82m: \033[0m").strip()
+        
+        if choice == '1':
+            self.create_partition_table_and_partition()
+        elif choice == '2':
+            self.create_partition_on_existing_disk()
+        elif choice == '3':
+            self.format_disk()
+        else:
+            print("\033[38;5;201mInvalid selection\033[0m")
+
+    def create_partition_table_and_partition(self):
+        """Create new partition table and first partition without formatting"""
+        disk = self.select_disk("Select disk to create partition table on")
+        if not disk:
+            return
+            
+        print("\n\033[38;5;201mPartition table types:\033[0m")
+        print("\033[38;5;201m1.\033[0m \033[38;5;82mMBR (msdos)\033[0m")
+        print("\033[38;5;201m2.\033[0m \033[38;5;82mGPT\033[0m")
+        table_choice = input("\n\033[38;5;82mSelect partition table type \033[0m\033[38;5;201m(1-2)\033[0m\033[38;5;82m: \033[0m").strip()
+        
+        if table_choice == '1':
+            table_type = "msdos"
+        elif table_choice == '2':
+            table_type = "gpt"
+        else:
+            print("\033[38;5;201mInvalid selection\033[0m")
+            return
+            
+        # Get disk size to suggest partition size
+        try:
+            disk_size = subprocess.check_output(
+                ["sudo", "blockdev", "--getsize64", disk]
+            ).decode().strip()
+            disk_size_mb = int(disk_size) // (1024 * 1024)
+            default_size = disk_size_mb  # Full disk by default
+        except subprocess.CalledProcessError:
+            disk_size_mb = 0
+            default_size = 0
+            
+        # Prompt for partition size
+        size_input = input(
+            f"\033[38;5;82mEnter partition size in MB (default: {default_size} - full disk): \033[0m"
+        ).strip()
+        size_mb = int(size_input) if size_input else default_size
+        
+        if not self.confirm_operation(
+            f"You are about to:\n"
+            f"1. Create a {table_type} partition table on {disk}\n"
+            f"2. Create a {size_mb}MB partition\n"
+            f"WARNING: This will destroy all data on this disk!"
+        ):
+            return
+            
+        print(f"\n\033[38;5;201mCreating {table_type} partition table on {disk}...\033[0m")
+        try:
+            # Create partition table
+            subprocess.run(
+                ["sudo", "parted", "-s", disk, "mklabel", table_type],
+                check=True
+            )
+            
+            # Create partition
+            if table_type == "msdos":
+                # For MBR, create primary partition
+                subprocess.run(
+                    ["sudo", "parted", "-s", disk, "mkpart", "primary", "0%", f"{size_mb}MB"],
+                    check=True
+                )
+            else:
+                # For GPT, just create partition
+                subprocess.run(
+                    ["sudo", "parted", "-s", disk, "mkpart", "primary", "0%", f"{size_mb}MB"],
+                    check=True
+                )
+            
+            # Wait a moment for the partition to be recognized
+            subprocess.run(["sudo", "partprobe", disk], check=True)
+            
+            # Get the new partition path
+            partitions = subprocess.check_output(
+                ["lsblk", "-pno", "NAME", disk]
+            ).decode().strip().split("\n")
+            
+            if len(partitions) > 1:
+                new_partition = partitions[1].strip()
+                print(f"\033[38;5;82mSuccessfully created partition {new_partition}\033[0m")
+                print("\033[38;5;201mNote: Partition is not formatted. Use the format option to create a filesystem.\033[0m")
+            else:
+                print("\033[38;5;201mFailed to find new partition after creation\033[0m")
+                
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode().strip() if e.stderr else str(e)
+            print(f"\033[38;5;201mFailed to create partition: {error_msg}\033[0m")
+
+    def create_partition_on_existing_disk(self):
+        """Create new partition on existing disk with free space without formatting"""
+        disk = self.select_disk("Select disk with free space")
+        if not disk:
+            return
+            
+        # Get free space information
+        free_spaces = self.get_free_space(disk)
+        if not free_spaces:
+            print("\033[38;5;201mNo free space found on this disk!\033[0m")
+            return
+            
+        # List free spaces for selection
+        print("\n\033[38;5;201mAvailable free space on disk:\033[0m")
+        for i, space in enumerate(free_spaces, 1):
+            print(f"\033[38;5;201m{i}.\033[0m \033[38;5;82m{space['size']}MB free (from {space['start']}MB to {space['end']}MB)\033[0m")
+            
+        # Prompt for free space selection
+        try:
+            choice = input("\n\033[38;5;82mSelect free space to use \033[0m\033[38;5;201m(1-{})\033[0m\033[38;5;82m: \033[0m".format(
+                len(free_spaces)
+            )).strip()
+            choice = int(choice) - 1
+            if choice < 0 or choice >= len(free_spaces):
+                raise ValueError
+                
+            selected_space = free_spaces[choice]
+            
+        except (ValueError, IndexError):
+            print("\033[38;5;201mInvalid selection\033[0m")
+            return
+            
+        # Prompt for partition size (can't be larger than free space)
+        max_size = int(selected_space['size'])
+        size_input = input(
+            f"\033[38;5;82mEnter partition size in MB (max {max_size}MB): \033[0m"
+        ).strip()
+        try:
+            size_mb = int(size_input)
+            if size_mb <= 0 or size_mb > max_size:
+                raise ValueError
+        except ValueError:
+            print("\033[38;5;201mInvalid size\033[0m")
+            return
+            
+        # Calculate start and end (in MB)
+        start = selected_space['start']
+        end = str(int(start) + size_mb)
+        
+        if not self.confirm_operation(
+            f"You are about to:\n"
+            f"1. Create a new {size_mb}MB partition on {disk}\n"
+            f"2. Using space from {start}MB to {end}MB\n"
+            f"WARNING: This operation cannot be undone!"
+        ):
+            return
+            
+        print(f"\n\033[38;5;201mCreating new partition on {disk}...\033[0m")
+        try:
+            # Create the partition
+            subprocess.run(
+                ["sudo", "parted", "-s", disk, "mkpart", "primary", f"{start}MB", f"{end}MB"],
+                check=True
+            )
+            
+            # Wait a moment for the partition to be recognized
+            subprocess.run(["sudo", "partprobe", disk], check=True)
+            
+            # Get the new partition path
+            partitions = subprocess.check_output(
+                ["lsblk", "-pno", "NAME", disk]
+            ).decode().strip().split("\n")
+            
+            if len(partitions) > 1:
+                # Find the newest partition (last one)
+                new_partition = partitions[-1].strip()
+                print(f"\033[38;5;82mSuccessfully created partition {new_partition}\033[0m")
+                print("\033[38;5;201mNote: Partition is not formatted. Use the format option to create a filesystem.\033[0m")
+            else:
+                print("\033[38;5;201mFailed to find new partition after creation\033[0m")
+                
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode().strip() if e.stderr else str(e)
+            print(f"\033[38;5;201mFailed to create partition: {error_msg}\033[0m")
+
+    def format_disk(self):
+        print("\n\033[38;5;201mFormat Disk/Partition\033[0m")
+        print(" ")
+        
+        device = self.select_disk_or_partition("Select disk or partition to format")
+        if not device:
+            return
+            
+        print("\n\033[38;5;201mAvailable filesystems:\033[0m")
+        filesystems = [
+            ("1", "FAT16", "fat16"), ("2", "FAT32", "fat32"), ("3", "exFAT", "exfat"),
+            ("4", "NTFS", "ntfs"), ("5", "BTRFS", "btrfs"), ("6", "EXT2", "ext2"),
+            ("7", "EXT3", "ext3"), ("8", "EXT4", "ext4"), ("9", "LUKS", "luks")
+        ]
+        
+        for num, name, _ in filesystems:
+            print(f"\033[38;5;201m{num}.\033[0m \033[38;5;82m{name}\033[0m")
+            
+        choice = input("\n\033[38;5;82mSelect filesystem \033[0m\033[38;5;201m(1-9)\033[0m\033[38;5;82m: \033[0m").strip()
+        selected = None
+        
+        for num, name, fs_type in filesystems:
+            if choice == num:
+                selected = fs_type
+                break
+                
+        if not selected:
+            print("\033[38;5;201mInvalid selection\033[0m")
+            return
+            
+        if not self.confirm_operation(
+            f"You are about to format:\n{device}\n"
+            f"as {selected.upper()}\n"
+            f"WARNING: This will destroy all data on this disk/partition!"
+        ):
+            return
+            
+        print(f"\n\033[38;5;201mFormatting {device} as {selected}...\033[0m\n")
+        try:
+            if selected == "luks":
+                # Prompt for passphrase
+                passphrase = input("\033[38;5;82mEnter passphrase for LUKS encryption: \033[0m").strip()
+                if not passphrase:
+                    print("\033[38;5;201mPassphrase cannot be empty!\033[0m")
+                    return
+                
+                # Create LUKS container
+                process = subprocess.Popen(
+                    ["sudo", "cryptsetup", "luksFormat", "--batch-mode", device],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                process.communicate(input=passphrase + "\n" + passphrase + "\n")
+                
+                if process.returncode != 0:
+                    raise subprocess.CalledProcessError(process.returncode, process.args)
+                
+                print("\033[38;5;82mLUKS container created successfully\033[0m")
+                
+                # Open the LUKS container
+                mapper_name = os.path.basename(device) + "_crypt"
+                process = subprocess.Popen(
+                    ["sudo", "cryptsetup", "open", device, mapper_name],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                process.communicate(input=passphrase + "\n")
+                
+                if process.returncode != 0:
+                    raise subprocess.CalledProcessError(process.returncode, process.args)
+                
+                print("\033[38;5;82mLUKS container opened at /dev/mapper/{}\033[0m".format(mapper_name))
+                
+                # Prompt for filesystem for the data partition
+                print("\n\033[38;5;201mAvailable filesystems for the data partition:\033[0m")
+                data_filesystems = [
+                    ("1", "EXT4", "ext4"), ("2", "BTRFS", "btrfs"), ("3", "XFS", "xfs")
+                ]
+                
+                for num, name, _ in data_filesystems:
+                    print(f"\033[38;5;201m{num}.\033[0m \033[38;5;82m{name}\033[0m")
+                    
+                choice = input("\n\033[38;5;82mSelect filesystem for data partition \033[0m\033[38;5;201m(1-3)\033[0m\033[38;5;82m: \033[0m").strip()
+                selected_fs = None
+                
+                for num, name, fs_type in data_filesystems:
+                    if choice == num:
+                        selected_fs = fs_type
+                        break
+                        
+                if not selected_fs:
+                    print("\033[38;5;201mInvalid selection\033[0m")
+                    return
+                
+                # Format the data partition
+                mapper_path = f"/dev/mapper/{mapper_name}"
+                if selected_fs == "ext4":
+                    cmd = ["sudo", "mkfs.ext4", mapper_path]
+                elif selected_fs == "btrfs":
+                    cmd = ["sudo", "mkfs.btrfs", "-f", mapper_path]
+                elif selected_fs == "xfs":
+                    cmd = ["sudo", "mkfs.xfs", "-f", mapper_path]
+                
+                result = subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                
+                print(f"\033[38;5;82mSuccessfully formatted {mapper_path} as {selected_fs}\033[0m")
+                
+                # Close the LUKS container
+                subprocess.run(["sudo", "cryptsetup", "close", mapper_name], check=True)
+                print("\033[38;5;82mLUKS container closed\033[0m")
+                
+            else:
+                if selected.startswith("fat"):
+                    cmd = ["sudo", "mkfs.vfat", "-F", selected[3:], device]
+                elif selected == "exfat":
+                    cmd = ["sudo", "mkfs.exfat", device]
+                elif selected == "ntfs":
+                    cmd = ["sudo", "mkfs.ntfs", "-Q", device]
+                elif selected.startswith("ext"):
+                    cmd = ["sudo", f"mkfs.{selected}", device]
+                elif selected == "btrfs":
+                    cmd = ["sudo", "mkfs.btrfs", "-f", device]
+                
+                result = subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+
+                print(f"\033[38;5;82mSuccessfully formatted {device} as {selected}\033[0m")
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode().strip() if e.stderr else str(e)
+            print(f"\033[38;5;201mFailed to format disk: {error_msg}\033[0m")
+
     def cancel_operation(self):
         if self.process:
             self.process.terminate()
@@ -664,15 +911,14 @@ def main():
         print(" ")
         print("\033[38;5;201m1.\033[0m \033[38;5;82mFile to Disk\033[0m")
         print("\033[38;5;201m2.\033[0m \033[38;5;82mDisk to Disk\033[0m")
-        print("\033[38;5;201m3.\033[0m \033[38;5;82mCreate Partition Table\033[0m")
-        print("\033[38;5;201m4.\033[0m \033[38;5;82mFormat Disk/Partition\033[0m")
-        print("\033[38;5;201m5.\033[0m \033[38;5;82mSecure Erase Disk\033[0m")
-        print("\033[38;5;201m6.\033[0m \033[38;5;82mCreate Disk Image\033[0m")
-        print("\033[38;5;201m7.\033[0m \033[38;5;82mCreate Virtual Disk\033[0m")
-        print("\033[38;5;201m8.\033[0m \033[38;5;82mList Disks\033[0m")
-        print("\033[38;5;201m9.\033[0m \033[38;5;82mExit\033[0m")
+        print("\033[38;5;201m3.\033[0m \033[38;5;82mPartition Management\033[0m")
+        print("\033[38;5;201m4.\033[0m \033[38;5;82mSecure Erase Disk\033[0m")
+        print("\033[38;5;201m5.\033[0m \033[38;5;82mCreate Disk Image\033[0m")
+        print("\033[38;5;201m6.\033[0m \033[38;5;82mCreate Virtual Disk\033[0m")
+        print("\033[38;5;201m7.\033[0m \033[38;5;82mList Disks\033[0m")
+        print("\033[38;5;201m8.\033[0m \033[38;5;82mExit\033[0m")
         
-        choice = input("\n\033[38;5;82mSelect operation \033[0m\033[38;5;201m(1-9)\033[0m\033[38;5;82m: \033[0m").strip()
+        choice = input("\n\033[38;5;82mSelect operation \033[0m\033[38;5;201m(1-8)\033[0m\033[38;5;82m: \033[0m").strip()
         
         try:
             if choice == '1':
@@ -680,18 +926,16 @@ def main():
             elif choice == '2':
                 utility.disk_to_disk()
             elif choice == '3':
-                utility.create_partition_table()
+                utility.partition_management()
             elif choice == '4':
-                utility.format_disk()
-            elif choice == '5':
                 utility.secure_erase()
-            elif choice == '6':
+            elif choice == '5':
                 utility.create_disk_image()
-            elif choice == '7':
+            elif choice == '6':
                 utility.create_virtual_disk()
-            elif choice == '8':
+            elif choice == '7':
                 utility.list_disks()
-            elif choice == '9':
+            elif choice == '8':
                 print("\033[38;5;201mExiting...\033[0m")
                 break
             else:
