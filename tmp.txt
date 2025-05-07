@@ -1,0 +1,11 @@
+add features to script:
+
+1. when selecting: 4. Format Disk/Partition, list all disks and partitions on disks. allow for formatting whole disks or just partitions on a disk. 
+
+2.  when selecting LUKS as fs type in "4. Format Disk/Partition" start a: "cryptsetup luksFormat (selected disk/partition)" where user is prompted for passphrase to use, also mount the data partiton after luks format and prompt user to select FS type to format it as. 
+
+3. add menu option to create a new virtual disk, prompt user for path where to save it and also the name of the .img. mount virtual disk as read/write. and echo "Virtual disk created at "save path" and mounted as "/dev/loopx"
+
+4. when creating a disk image of a disk. prompt user for path where to save it and then prompt user for a name to save the file as. 
+
+add all these fixes and write out the full edited script.
