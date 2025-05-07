@@ -909,12 +909,12 @@ def main():
     while True:
         print("\n\033[38;5;201mDD Utility - CLI \033[0m")
         print(" ")
-        print("\033[38;5;201m1.\033[0m \033[38;5;82mFile to Disk\033[0m")
-        print("\033[38;5;201m2.\033[0m \033[38;5;82mDisk to Disk\033[0m")
+        print("\033[38;5;201m1.\033[0m \033[38;5;82mFlash File to Disk\033[0m")
+        print("\033[38;5;201m2.\033[0m \033[38;5;82mClone Disk to Disk\033[0m")
         print("\033[38;5;201m3.\033[0m \033[38;5;82mPartition Management\033[0m")
         print("\033[38;5;201m4.\033[0m \033[38;5;82mSecure Erase Disk\033[0m")
-        print("\033[38;5;201m5.\033[0m \033[38;5;82mCreate Disk Image\033[0m")
-        print("\033[38;5;201m6.\033[0m \033[38;5;82mCreate Virtual Disk\033[0m")
+        print("\033[38;5;201m5.\033[0m \033[38;5;82mCreate Image from Disk\033[0m")
+        print("\033[38;5;201m6.\033[0m \033[38;5;82mCreate & Mount Virtual Disk\033[0m")
         print("\033[38;5;201m7.\033[0m \033[38;5;82mList Disks\033[0m")
         print("\033[38;5;201m8.\033[0m \033[38;5;82mExit\033[0m")
         
