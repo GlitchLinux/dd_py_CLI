@@ -4,6 +4,8 @@
 
 ---
 
+![Image](https://github.com/user-attachments/assets/7b72249e-7d82-4609-b41c-6053b134ed6f)
+
 ## 📥 Installation  
 
 Run the following commands to quickly set up and launch DD-CLI:  
