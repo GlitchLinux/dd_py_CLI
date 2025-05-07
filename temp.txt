@@ -1,0 +1,38 @@
+make changes to script:
+
+DD Utility - CLI (make this title colour #FF00F6 ) 
+--------------------------------
+1. File to Disk
+2. Disk to Disk
+3. Create Partition Table
+4. Format Disk/Partition
+5. Secure Erase Disk
+6. Create Disk Image
+7. List Disks
+8. Exit
+
+( make all numbers #FF00F6 and task description #45FF00  )
+example:
+
+1. <- (#FF00F6) File to Disk <- #45FF00
+
+Select operation <- #45FF00 (1-8): <- (#FF00F6)
+
+also make dd progress (for any task) #45FF00
+
+EXAMPLE:
+
+You are about to flash:
+DEBIAN-GLITCH-LUKS-GPT-50GB.img
+to:
+/dev/loop1
+(make sure empty line here for easy readability)
+WARNING: This will destroy all data on the destination disk! (This warning is colour #FF00F6 )
+(make sure empty line here for easy readability)
+Are you sure you want to continue? (y/N): y
+(make sure empty line here for easy readability)
+Starting file to disk operation...
+(make sure empty line here for easy readability)
+Copied: 2980 MB, 6% Done (change "Done" to "Completed" also this progress is #45FF00 )
+
+add changes and write out the full edited .py script
