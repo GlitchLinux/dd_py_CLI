@@ -81,7 +81,15 @@ class DDUtilityCLI:
                 print("Please enter a valid number.")
 
     def confirm_operation(self, message):
-        print(f"\n{message}")
+        parts = message.split('\n')
+        formatted_message = []
+        for part in parts:
+            if "WARNING:" in part:
+                formatted_message.append(f"\033[38;5;201m{part}\033[0m")
+            else:
+                formatted_message.append(part)
+        
+        print("\n" + "\n".join(formatted_message) + "\n")
         response = input("Are you sure you want to continue? (y/N): ").strip().lower()
         return response == 'y'
 
@@ -92,7 +100,7 @@ class DDUtilityCLI:
             copied_mb = copied_bytes / (1024 * 1024)
             if self.total_size > 0:
                 progress_percentage = min((copied_bytes / self.total_size) * 100, 100)
-                print(f"\rCopied: {int(copied_mb):04d} MB, {progress_percentage:.0f}% Done", end='')
+                print(f"\r\033[38;5;82mCopied: {int(copied_mb):04d} MB, {progress_percentage:.0f}% Completed\033[0m", end='')
 
     def execute_dd(self, src, dest):
         try:
@@ -152,7 +160,7 @@ class DDUtilityCLI:
         ):
             return
             
-        print("\nStarting file to disk operation...")
+        print("\nStarting file to disk operation...\n")
         self.execute_dd(file_path, dest_disk)
 
     def disk_to_disk(self):
@@ -182,7 +190,7 @@ class DDUtilityCLI:
         ):
             return
             
-        print("\nStarting disk to disk operation...")
+        print("\nStarting disk to disk operation...\n")
         self.execute_dd(src_disk, dest_disk)
 
     def create_partition_table(self):
@@ -194,9 +202,9 @@ class DDUtilityCLI:
             return
             
         print("\nPartition table types:")
-        print("1. MBR (msdos)")
-        print("2. GPT")
-        choice = input("Select partition table type (1-2): ").strip()
+        print("\033[38;5;201m1.\033[0m \033[38;5;82mMBR (msdos)\033[0m")
+        print("\033[38;5;201m2.\033[0m \033[38;5;82mGPT\033[0m")
+        choice = input("\033[38;5;82mSelect partition table type \033[0m\033[38;5;201m(1-2)\033[0m\033[38;5;82m: \033[0m").strip()
         
         if choice == '1':
             table_type = "msdos"
@@ -212,7 +220,7 @@ class DDUtilityCLI:
         ):
             return
             
-        print(f"\nCreating {table_type} partition table on {disk}...")
+        print(f"\nCreating {table_type} partition table on {disk}...\n")
         try:
             result = subprocess.run(
                 ["sudo", "parted", "-s", disk, "mklabel", table_type],
@@ -241,9 +249,9 @@ class DDUtilityCLI:
         ]
         
         for num, name, _ in filesystems:
-            print(f"{num}. {name}")
+            print(f"\033[38;5;201m{num}.\033[0m \033[38;5;82m{name}\033[0m")
             
-        choice = input("Select filesystem (1-9): ").strip()
+        choice = input("\033[38;5;82mSelect filesystem \033[0m\033[38;5;201m(1-9)\033[0m\033[38;5;82m: \033[0m").strip()
         selected = None
         
         for num, name, fs_type in filesystems:
@@ -262,7 +270,7 @@ class DDUtilityCLI:
         ):
             return
             
-        print(f"\nFormatting {disk} as {selected}...")
+        print(f"\nFormatting {disk} as {selected}...\n")
         try:
             if selected == "luks":
                 process = subprocess.Popen(
@@ -308,10 +316,10 @@ class DDUtilityCLI:
             return
             
         print("\nErase methods:")
-        print("1. /dev/zero (1 pass)")
-        print("2. /dev/random (3 passes)")
-        print("3. /dev/urandom (7 passes)")
-        choice = input("Select erase method (1-3): ").strip()
+        print("\033[38;5;201m1.\033[0m \033[38;5;82m/dev/zero (1 pass)\033[0m")
+        print("\033[38;5;201m2.\033[0m \033[38;5;82m/dev/random (3 passes)\033[0m")
+        print("\033[38;5;201m3.\033[0m \033[38;5;82m/dev/urandom (7 passes)\033[0m")
+        choice = input("\033[38;5;82mSelect erase method \033[0m\033[38;5;201m(1-3)\033[0m\033[38;5;82m: \033[0m").strip()
         
         if choice == '1':
             source = "/dev/zero"
@@ -341,7 +349,7 @@ class DDUtilityCLI:
             print(f"Error: Failed to get disk size: {e}")
             return
             
-        print(f"\nErasing {disk} with {passes} passes of {source}...")
+        print(f"\nErasing {disk} with {passes} passes of {source}...\n")
         try:
             for i in range(passes):
                 if self.cancelled:
@@ -371,7 +379,7 @@ class DDUtilityCLI:
                     if match:
                         copied_bytes = int(match.group(1))
                         progress = (i * 100 + (copied_bytes / self.total_size * 100)) / passes
-                        print(f"\rProgress: {progress:.1f}%", end='')
+                        print(f"\r\033[38;5;82mProgress: {progress:.1f}%\033[0m", end='')
                 
                 process.wait()
                 if process.returncode != 0 and not self.cancelled:
@@ -422,7 +430,7 @@ class DDUtilityCLI:
             print(f"Error: Failed to get disk size: {e}")
             return
             
-        print(f"\nCreating disk image from {disk} to {self.image_path}...")
+        print(f"\nCreating disk image from {disk} to {self.image_path}...\n")
         try:
             process = subprocess.Popen(
                 ["sudo", "dd", f"if={disk}", f"of={self.image_path}", "bs=4M", "status=progress"],
@@ -449,7 +457,7 @@ class DDUtilityCLI:
                 if match:
                     copied_bytes = int(match.group(1))
                     progress_percentage = min((copied_bytes / self.total_size) * 100, 100)
-                    print(f"\rProgress: {progress_percentage:.1f}%", end='')
+                    print(f"\r\033[38;5;82mProgress: {progress_percentage:.1f}%\033[0m", end='')
             
             process.wait()
             if self.cancelled:
@@ -487,18 +495,18 @@ def main():
         sys.exit(0)
     
     while True:
-        print("\nDD Utility - Command Line Interface")
-        print("--------------------------------")
-        print("1. File to Disk")
-        print("2. Disk to Disk")
-        print("3. Create Partition Table")
-        print("4. Format Disk/Partition")
-        print("5. Secure Erase Disk")
-        print("6. Create Disk Image")
-        print("7. List Disks")
-        print("8. Exit")
+        print("\n\033[38;5;201mDD Utility - CLI\033[0m")
+        print(" ")
+        print("\033[38;5;201m1.\033[0m \033[38;5;82mFile to Disk\033[0m")
+        print("\033[38;5;201m2.\033[0m \033[38;5;82mDisk to Disk\033[0m")
+        print("\033[38;5;201m3.\033[0m \033[38;5;82mCreate Partition Table\033[0m")
+        print("\033[38;5;201m4.\033[0m \033[38;5;82mFormat Disk/Partition\033[0m")
+        print("\033[38;5;201m5.\033[0m \033[38;5;82mSecure Erase Disk\033[0m")
+        print("\033[38;5;201m6.\033[0m \033[38;5;82mCreate Disk Image\033[0m")
+        print("\033[38;5;201m7.\033[0m \033[38;5;82mList Disks\033[0m")
+        print("\033[38;5;201m8.\033[0m \033[38;5;82mExit\033[0m")
         
-        choice = input("\nSelect operation (1-8): ").strip()
+        choice = input("\n\033[38;5;82mSelect operation \033[0m\033[38;5;201m(1-8)\033[0m\033[38;5;82m: \033[0m").strip()
         
         try:
             if choice == '1':
