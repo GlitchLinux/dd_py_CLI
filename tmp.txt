@@ -1,11 +1,34 @@
-add features to script:
+changes to make:
 
-1. when selecting: 4. Format Disk/Partition, list all disks and partitions on disks. allow for formatting whole disks or just partitions on a disk. 
+1. when selecting 4. 
+list disks and partitions numbered like this to allow for formatting a whole disk or a partition on the disk:
 
-2.  when selecting LUKS as fs type in "4. Format Disk/Partition" start a: "cryptsetup luksFormat (selected disk/partition)" where user is prompted for passphrase to use, also mount the data partiton after luks format and prompt user to select FS type to format it as. 
+list like this:
 
-3. add menu option to mount a new virtual disk, prompt user for path where to save it, size of disk, and also the name of the .img. mount virtual disk as read/write. and echo "Virtual disk created at "save path" and mounted as "/dev/loopx" (do not format created disk image)
+1. /dev/sda - (name of device and size)
+2. /dev/sda1 - (size of partition and fs type)
+3. /dev/sda2   - (size of partition and fs type)   
+4. /dev/sdb  -  (name of device and size)
+5. /dev/sdb1   - (size of partition and fs type)   
 
-4. when creating a disk image of a disk. prompt user for path where to save it and then prompt user for a name to save the file as. 
+user selects number and then is prompted to select fs type.
+
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+2. add new feature to main main menu, "Create new partition". selecting this option script lists disks. user selects disk, script then lists partitions on disk and also any unpartioned free space and prompts user:
+
+
+1. New partion table and partition - (This prompts user to select MBR or GPT, then user is prompted to select size of partition and FS type.)
+2. Create new partition on existing disk (this option allows for creating new partition using free unpartitioned disk space, (this does not format any disk or edits existing partitions - this is for creating new partitions on free disk space.
+
+prompt user: (example)
+
+ /dev/sdx - (device name and size)
+FREE SPACE on /dev/sdx 
+1. /dev/sdax   - (size of free space and "this free space is before/after /dev/sdax )  
+2. /dev/sdax   - (size of free space and "this free space is before/after /dev/sdax )  
+
+user selects free space "slot" and then gets prompted to select partiton size and fs type.
+
 
 add all these fixes and write out the full edited script.
