@@ -48,7 +48,7 @@ class DDUtilityCLI:
             print(f"Error: Failed to list disks: {e}")
             return []
 
-    def list_disks(self):
+    def list_disks(self, include_partitions=False):
         disks = self.get_disk_info()
         if not disks:
             print("\033[38;5;201mNo disks found!\033[0m")
@@ -58,14 +58,32 @@ class DDUtilityCLI:
         print(" ")
         for i, path, size, model in disks:
             print("\033[38;5;201m{:<3}\033[0m \033[38;5;82m{:<15} {:<10} {}\033[0m".format(i, path, size, model))
+            
+            if include_partitions:
+                try:
+                    partitions = subprocess.check_output(
+                        ["lsblk", "-pno", "NAME", path]
+                    ).decode().strip().split("\n")
+                    
+                    if len(partitions) > 1:  # If there are partitions
+                        for part in partitions[1:]:  # Skip the first line (disk itself)
+                            part_info = subprocess.check_output(
+                                ["lsblk", "-dpno", "NAME,SIZE,FSTYPE", part.strip()]
+                            ).decode().strip()
+                            part_parts = part_info.split()
+                            print("   \033[38;5;201m->\033[0m \033[38;5;82m{:<15} {:<10} {}\033[0m".format(
+                                part_parts[0], part_parts[1], part_parts[2] if len(part_parts) > 2 else "Unknown"
+                            ))
+                except subprocess.CalledProcessError:
+                    pass
 
-    def select_disk(self, prompt):
+    def select_disk(self, prompt, include_partitions=False):
         disks = self.get_disk_info()
         if not disks:
             return None
             
         while True:
-            self.list_disks()
+            self.list_disks(include_partitions)
             try:
                 choice = input(f"\n\033[38;5;201m{prompt} (enter number or 'q' to quit): \033[0m").strip()
                 if choice.lower() == 'q':
@@ -92,6 +110,7 @@ class DDUtilityCLI:
         
         print("\n" + "\n".join(formatted_message) + "\n")
         response = input("\033[38;5;82mAre you sure you want to continue? (y/N): \033[0m").strip().lower()
+        print()
         return response == 'y'
 
     def update_progress(self, line):
@@ -238,7 +257,7 @@ class DDUtilityCLI:
         print("\n\033[38;5;201mFormat Disk/Partition\033[0m")
         print(" ")
         
-        disk = self.select_disk("Select disk/partition to format")
+        disk = self.select_disk("Select disk/partition to format", include_partitions=True)
         if not disk:
             return
             
@@ -274,16 +293,86 @@ class DDUtilityCLI:
         print(f"\n\033[38;5;201mFormatting {disk} as {selected}...\033[0m\n")
         try:
             if selected == "luks":
+                # Prompt for passphrase
+                passphrase = input("\033[38;5;82mEnter passphrase for LUKS encryption: \033[0m").strip()
+                if not passphrase:
+                    print("\033[38;5;201mPassphrase cannot be empty!\033[0m")
+                    return
+                
+                # Create LUKS container
                 process = subprocess.Popen(
-                    ["sudo", "cryptsetup", "luksFormat", disk],
+                    ["sudo", "cryptsetup", "luksFormat", "--batch-mode", disk],
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True
                 )
-                process.communicate(input="YES\n")
+                process.communicate(input=passphrase + "\n" + passphrase + "\n")
+                
                 if process.returncode != 0:
                     raise subprocess.CalledProcessError(process.returncode, process.args)
+                
+                print("\033[38;5;82mLUKS container created successfully\033[0m")
+                
+                # Open the LUKS container
+                mapper_name = os.path.basename(disk) + "_crypt"
+                process = subprocess.Popen(
+                    ["sudo", "cryptsetup", "open", disk, mapper_name],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                process.communicate(input=passphrase + "\n")
+                
+                if process.returncode != 0:
+                    raise subprocess.CalledProcessError(process.returncode, process.args)
+                
+                print("\033[38;5;82mLUKS container opened at /dev/mapper/{}\033[0m".format(mapper_name))
+                
+                # Prompt for filesystem for the data partition
+                print("\n\033[38;5;201mAvailable filesystems for the data partition:\033[0m")
+                data_filesystems = [
+                    ("1", "EXT4", "ext4"), ("2", "BTRFS", "btrfs"), ("3", "XFS", "xfs")
+                ]
+                
+                for num, name, _ in data_filesystems:
+                    print(f"\033[38;5;201m{num}.\033[0m \033[38;5;82m{name}\033[0m")
+                    
+                choice = input("\n\033[38;5;82mSelect filesystem for data partition \033[0m\033[38;5;201m(1-3)\033[0m\033[38;5;82m: \033[0m").strip()
+                selected_fs = None
+                
+                for num, name, fs_type in data_filesystems:
+                    if choice == num:
+                        selected_fs = fs_type
+                        break
+                        
+                if not selected_fs:
+                    print("\033[38;5;201mInvalid selection\033[0m")
+                    return
+                
+                # Format the data partition
+                mapper_path = f"/dev/mapper/{mapper_name}"
+                if selected_fs == "ext4":
+                    cmd = ["sudo", "mkfs.ext4", mapper_path]
+                elif selected_fs == "btrfs":
+                    cmd = ["sudo", "mkfs.btrfs", "-f", mapper_path]
+                elif selected_fs == "xfs":
+                    cmd = ["sudo", "mkfs.xfs", "-f", mapper_path]
+                
+                result = subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                
+                print(f"\033[38;5;82mSuccessfully formatted {mapper_path} as {selected_fs}\033[0m")
+                
+                # Close the LUKS container
+                subprocess.run(["sudo", "cryptsetup", "close", mapper_name], check=True)
+                print("\033[38;5;82mLUKS container closed\033[0m")
+                
             else:
                 if selected.startswith("fat"):
                     cmd = ["sudo", "mkfs.vfat", "-F", selected[3:], disk]
@@ -303,7 +392,7 @@ class DDUtilityCLI:
                     stderr=subprocess.PIPE
                 )
 
-            print(f"\033[38;5;82mSuccessfully formatted {disk} as {selected}\033[0m")
+                print(f"\033[38;5;82mSuccessfully formatted {disk} as {selected}\033[0m")
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.decode().strip() if e.stderr else str(e)
             print(f"\033[38;5;201mFailed to format disk: {error_msg}\033[0m")
@@ -403,16 +492,19 @@ class DDUtilityCLI:
         if not disk:
             return
             
-        disk_model = self.disk_info[disk]['model'].replace(" ", "_")
-        disk_size = self.disk_info[disk]['size'].replace(" ", "")
-        default_name = f"image-of-{disk_model}-{disk_size}.img"
-        
-        dest_dir = input(f"\033[38;5;82mEnter directory to save image (default name: {default_name}): \033[0m").strip()
-        if not dest_dir:
-            print("\033[38;5;201mNo directory specified\033[0m")
+        # Prompt for save path
+        save_path = input("\033[38;5;82mEnter directory to save image: \033[0m").strip()
+        if not save_path or not os.path.isdir(save_path):
+            print("\033[38;5;201mInvalid directory path\033[0m")
             return
             
-        self.image_path = os.path.join(dest_dir, default_name)
+        # Prompt for filename
+        default_name = f"disk_image_{datetime.now().strftime('%Y%m%d_%H%M%S')}.img"
+        filename = input(f"\033[38;5;82mEnter filename for image (default: {default_name}): \033[0m").strip()
+        if not filename:
+            filename = default_name
+            
+        self.image_path = os.path.join(save_path, filename)
         
         if not self.confirm_operation(
             f"You are about to create a disk image with these details:\n"
@@ -475,6 +567,78 @@ class DDUtilityCLI:
                 os.remove(self.image_path)
             print(f"\n\033[38;5;201mDisk imaging failed: {error_msg}\033[0m")
 
+    def create_virtual_disk(self):
+        print("\n\033[38;5;201mCreate Virtual Disk\033[0m")
+        print(" ")
+        
+        # Prompt for save path
+        save_path = input("\033[38;5;82mEnter directory to save virtual disk: \033[0m").strip()
+        if not save_path or not os.path.isdir(save_path):
+            print("\033[38;5;201mInvalid directory path\033[0m")
+            return
+            
+        # Prompt for filename
+        default_name = f"virtual_disk_{datetime.now().strftime('%Y%m%d_%H%M%S')}.img"
+        filename = input(f"\033[38;5;82mEnter filename for virtual disk (default: {default_name}): \033[0m").strip()
+        if not filename:
+            filename = default_name
+            
+        image_path = os.path.join(save_path, filename)
+        
+        # Prompt for size
+        while True:
+            size_input = input("\033[38;5;82mEnter size of virtual disk (e.g., 1G, 500M): \033[0m").strip().upper()
+            if not size_input:
+                print("\033[38;5;201mSize cannot be empty!\033[0m")
+                continue
+                
+            try:
+                # Validate size format (number followed by M or G)
+                size_num = int(size_input[:-1])
+                size_unit = size_input[-1]
+                if size_unit not in ['M', 'G']:
+                    raise ValueError
+                break
+            except (ValueError, IndexError):
+                print("\033[38;5;201mInvalid size format. Use format like 1G or 500M\033[0m")
+                continue
+                
+        if not self.confirm_operation(
+            f"You are about to create a virtual disk with these details:\n"
+            f"Path: {image_path}\n"
+            f"Size: {size_input}\n"
+        ):
+            return
+            
+        print(f"\n\033[38;5;201mCreating virtual disk at {image_path} with size {size_input}...\033[0m\n")
+        try:
+            # Create empty file
+            subprocess.run(
+                ["sudo", "dd", "if=/dev/zero", f"of={image_path}", "bs=1", f"count=0", f"seek={size_input}"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # Mount as loop device
+            result = subprocess.run(
+                ["sudo", "losetup", "-f", "--show", image_path],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            loop_device = result.stdout.strip()
+            print(f"\033[38;5;82mVirtual disk created at {image_path} and mounted as {loop_device}\033[0m")
+            
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.decode().strip() if e.stderr else str(e)
+            # Remove failed image file if it exists
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            print(f"\n\033[38;5;201mFailed to create virtual disk: {error_msg}\033[0m")
+
     def cancel_operation(self):
         if self.process:
             self.process.terminate()
@@ -504,10 +668,11 @@ def main():
         print("\033[38;5;201m4.\033[0m \033[38;5;82mFormat Disk/Partition\033[0m")
         print("\033[38;5;201m5.\033[0m \033[38;5;82mSecure Erase Disk\033[0m")
         print("\033[38;5;201m6.\033[0m \033[38;5;82mCreate Disk Image\033[0m")
-        print("\033[38;5;201m7.\033[0m \033[38;5;82mList Disks\033[0m")
-        print("\033[38;5;201m8.\033[0m \033[38;5;82mExit\033[0m")
+        print("\033[38;5;201m7.\033[0m \033[38;5;82mCreate Virtual Disk\033[0m")
+        print("\033[38;5;201m8.\033[0m \033[38;5;82mList Disks\033[0m")
+        print("\033[38;5;201m9.\033[0m \033[38;5;82mExit\033[0m")
         
-        choice = input("\n\033[38;5;82mSelect operation \033[0m\033[38;5;201m(1-8)\033[0m\033[38;5;82m: \033[0m").strip()
+        choice = input("\n\033[38;5;82mSelect operation \033[0m\033[38;5;201m(1-9)\033[0m\033[38;5;82m: \033[0m").strip()
         
         try:
             if choice == '1':
@@ -523,8 +688,10 @@ def main():
             elif choice == '6':
                 utility.create_disk_image()
             elif choice == '7':
-                utility.list_disks()
+                utility.create_virtual_disk()
             elif choice == '8':
+                utility.list_disks()
+            elif choice == '9':
                 print("\033[38;5;201mExiting...\033[0m")
                 break
             else:
