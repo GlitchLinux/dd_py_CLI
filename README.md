@@ -2,7 +2,7 @@
 
 **A powerful Python-based command-line tool for disk operations, providing a user-friendly interface for common `dd` tasks.**  
 
-![Image](https://github.com/user-attachments/assets/10cf6635-89ff-4ae2-bd17-104210bafe50)
+![Image](https://github.com/user-attachments/assets/0a54690f-cb8f-49c1-b5a0-a7a2179cbc50)
 
 ## 📥 Installation  
 
